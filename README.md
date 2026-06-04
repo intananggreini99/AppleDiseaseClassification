@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Apple Leaf Disease Classification — Big Data Stack (Docker)
 
 Sistem analisis klasifikasi penyakit daun apel di atas **Docker** dengan
@@ -112,3 +113,6 @@ apple-leaf-disease-classification/
   hasil perbandingan durasi bersifat **indikatif**.
 - Jalankan **Tahap 1–5 berurutan**; tiap tahap bergantung pada output tahap sebelumnya.
 - Lihat bagian **Troubleshooting** pada dokumen Word jika ada kendala.
+=======
+# AppleDiseaseClassification
+>>>>>>> 39404fd1073cdf75c5aa8574a034be7d655a1cee
