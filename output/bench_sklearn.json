@@ -1,0 +1,35 @@
+[
+  {
+    "stage": "train",
+    "duration_s": 0.4788046210014727,
+    "n_samples": 7771,
+    "accuracy": 0.9750353879809548,
+    "f1": 0.9750649692171811,
+    "weighted_precision": 0.9753313712143608,
+    "weighted_recall": 0.9750353879809548,
+    "framework": "sklearn",
+    "run_ts": "2026-06-04T09:14:47"
+  },
+  {
+    "stage": "validation",
+    "duration_s": 0.00982078499509953,
+    "n_samples": 7,
+    "accuracy": 0.8571428571428571,
+    "f1": 0.9142857142857144,
+    "weighted_precision": 1.0,
+    "weighted_recall": 0.8571428571428571,
+    "framework": "sklearn",
+    "run_ts": "2026-06-04T09:14:47"
+  },
+  {
+    "stage": "test",
+    "duration_s": 0.01204899399454007,
+    "n_samples": 1943,
+    "accuracy": 0.932578486875965,
+    "f1": 0.9325571410505312,
+    "weighted_precision": 0.9325742042288413,
+    "weighted_recall": 0.932578486875965,
+    "framework": "sklearn",
+    "run_ts": "2026-06-04T09:14:47"
+  }
+]

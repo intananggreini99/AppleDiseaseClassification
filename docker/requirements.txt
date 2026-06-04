@@ -1,0 +1,12 @@
+# Dependensi Python untuk image Spark kustom.
+# Versi dipatok agar build reproducible.
+numpy==1.26.4
+pandas==2.1.4
+scipy==1.11.4
+scikit-learn==1.3.2
+scikit-image==0.22.0
+opencv-python-headless==4.9.0.80
+Pillow==10.2.0
+psycopg2-binary==2.9.9
+SQLAlchemy==2.0.25
+matplotlib==3.8.2

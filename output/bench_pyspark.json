@@ -1,0 +1,35 @@
+[
+  {
+    "stage": "train",
+    "duration_s": 9.806339114998991,
+    "n_samples": 7771,
+    "accuracy": 0.974263286578304,
+    "f1": 0.9742410790055618,
+    "weighted_precision": 0.974626169860124,
+    "weighted_recall": 0.9742632865783039,
+    "framework": "pyspark",
+    "run_ts": "2026-06-04T09:54:18"
+  },
+  {
+    "stage": "validation",
+    "duration_s": 1.4575090860016644,
+    "n_samples": 7,
+    "accuracy": 0.8571428571428571,
+    "f1": 0.9142857142857144,
+    "weighted_precision": 1.0,
+    "weighted_recall": 0.8571428571428571,
+    "framework": "pyspark",
+    "run_ts": "2026-06-04T09:54:18"
+  },
+  {
+    "stage": "test",
+    "duration_s": 1.684292136997101,
+    "n_samples": 1943,
+    "accuracy": 0.9382398353062275,
+    "f1": 0.9380255015902156,
+    "weighted_precision": 0.9381572830493503,
+    "weighted_recall": 0.9382398353062276,
+    "framework": "pyspark",
+    "run_ts": "2026-06-04T09:54:18"
+  }
+]

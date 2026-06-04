@@ -1,0 +1,244 @@
+# =====================================================================
+# docker-compose.yml
+# Orkestrasi seluruh komponen arsitektur Apple Leaf Disease Classification
+#
+#   namenode / datanode .................. HDFS (penyimpanan citra & Parquet)
+#   hive-metastore-postgresql ............ backend metadata Hive
+#   hive-metastore / hive-server ......... Apache Hive (Metastore + HiveServer2)
+#   postgres ............................. PostgreSQL (DB aplikasi/preprocessing)
+#   spark-master / spark-worker .......... Apache Spark (komputasi MLlib)
+#   spark-history ........................ Spark History Server (monitoring job)
+#
+# Catatan untuk Windows 11:
+#   - Jalankan melalui Docker Desktop (backend WSL2).
+#   - Pastikan alokasi RAM Docker Desktop minimal 8 GB (Settings > Resources).
+# =====================================================================
+
+services:
+  # -------------------------------------------------------------------
+  # HDFS - NameNode
+  # -------------------------------------------------------------------
+  namenode:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: namenode
+    restart: unless-stopped
+    environment:
+      - CLUSTER_NAME=apple-cluster
+    env_file:
+      - ./config/hadoop.env
+    ports:
+      - "9870:9870"   # Web UI NameNode
+      - "9000:9000"   # RPC HDFS
+    volumes:
+      - hadoop_namenode:/hadoop/dfs/name
+      - ./data:/source-data:ro          # sumber citra (read-only) untuk diunggah ke HDFS
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9870"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # HDFS - DataNode
+  # -------------------------------------------------------------------
+  datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    container_name: datanode
+    restart: unless-stopped
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./config/hadoop.env
+    ports:
+      - "9864:9864"   # Web UI DataNode
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    depends_on:
+      - namenode
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # Hive - Backend metadata (PostgreSQL khusus metastore)
+  # -------------------------------------------------------------------
+  hive-metastore-postgresql:
+    image: bde2020/hive-metastore-postgresql:2.3.0
+    container_name: hive-metastore-postgresql
+    restart: unless-stopped
+    volumes:
+      - hive_metastore_pg:/var/lib/postgresql/data
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # Hive - Metastore service (Thrift, port 9083)
+  # -------------------------------------------------------------------
+  hive-metastore:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-metastore
+    restart: unless-stopped
+    command: /opt/hive/bin/hive --service metastore
+    env_file:
+      - ./config/hadoop.env
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 datanode:9864 hive-metastore-postgresql:5432"
+    ports:
+      - "9083:9083"
+    depends_on:
+      - namenode
+      - datanode
+      - hive-metastore-postgresql
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # Hive - HiveServer2 (JDBC port 10000, Web UI 10002)
+  # -------------------------------------------------------------------
+  hive-server:
+    image: bde2020/hive:2.3.2-postgresql-metastore
+    container_name: hive-server
+    restart: unless-stopped
+    env_file:
+      - ./config/hadoop.env
+    environment:
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore-postgresql/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+    ports:
+      - "10000:10000"   # JDBC HiveServer2
+      - "10002:10002"   # Web UI HiveServer2
+    depends_on:
+      - hive-metastore
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # PostgreSQL - Database aplikasi (hasil preprocessing & benchmark)
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: appleuser
+      POSTGRES_PASSWORD: applepass
+      POSTGRES_DB: appledb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./config/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appleuser -d appledb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # Spark - Master
+  # -------------------------------------------------------------------
+  spark-master:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spark
+    image: apple-spark:3.3.2
+    container_name: spark-master
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+      --host spark-master --port 7077 --webui-port 8080
+    env_file:
+      - ./config/hadoop.env
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"   # Web UI Spark Master
+      - "7077:7077"   # RPC Spark Master
+      - "4040:4040"   # Web UI aplikasi Spark (saat job berjalan)
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./config/spark/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
+      - ./config/spark/core-site.xml:/opt/spark/conf/core-site.xml:ro
+      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    depends_on:
+      - namenode
+      - hive-metastore
+      - postgres
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # Spark - Worker
+  # -------------------------------------------------------------------
+  spark-worker:
+    image: apple-spark:3.3.2
+    container_name: spark-worker
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+      spark://spark-master:7077 --webui-port 8081
+    env_file:
+      - ./config/hadoop.env
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2g
+    ports:
+      - "8081:8081"   # Web UI Spark Worker
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./config/spark/hive-site.xml:/opt/spark/conf/hive-site.xml:ro
+      - ./config/spark/core-site.xml:/opt/spark/conf/core-site.xml:ro
+      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+    depends_on:
+      - spark-master
+    networks:
+      - apple-net
+
+  # -------------------------------------------------------------------
+  # Spark - History Server (monitoring job yang sudah selesai)
+  # -------------------------------------------------------------------
+  spark-history:
+    image: apple-spark:3.3.2
+    container_name: spark-history
+    restart: unless-stopped
+    command: >
+      /opt/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+    env_file:
+      - ./config/hadoop.env
+    environment:
+      - SPARK_MODE=history
+    ports:
+      - "18080:18080"   # Web UI Spark History Server
+    volumes:
+      - ./config/spark/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf:ro
+      - ./config/spark/core-site.xml:/opt/spark/conf/core-site.xml:ro
+    depends_on:
+      - namenode
+      - spark-master
+    networks:
+      - apple-net
+
+# =====================================================================
+# Volume persisten
+# =====================================================================
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hive_metastore_pg:
+  postgres_data:
+
+# =====================================================================
+# Jaringan internal
+# =====================================================================
+networks:
+  apple-net:
+    driver: bridge
+    name: apple-net

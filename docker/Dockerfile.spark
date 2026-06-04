@@ -1,0 +1,86 @@
+# =====================================================================
+# Dockerfile.spark
+# Image Spark kustom berbasis Debian (python:3.10-slim-bullseye) yang
+# memuat:
+#   - Java 11 (OpenJDK)
+#   - Apache Spark 3.3.2 (paket hadoop3 -> Hive client 2.3.9 bawaan)
+#   - Pustaka Python untuk computer vision & machine learning
+#   - Driver JDBC PostgreSQL (untuk baca/tulis ke PostgreSQL)
+#
+# Image yang sama dipakai untuk peran spark-master maupun spark-worker;
+# peran ditentukan lewat 'command' pada docker-compose.yml.
+#
+# Alasan memakai base Debian (bukan Alpine): pustaka saintifik seperti
+# numpy/scipy/scikit-image/opencv terinstal jauh lebih mulus pada glibc.
+# =====================================================================
+FROM python:3.10-slim-bullseye
+
+LABEL maintainer="apple-leaf-disease-classification"
+LABEL description="Spark 3.3.2 + Python ML stack untuk klasifikasi penyakit daun apel"
+
+# ---------------------------------------------------------------------
+# 1. Dependensi sistem + Java 11
+# ---------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openjdk-11-jdk-headless \
+        wget \
+        curl \
+        procps \
+        bash \
+        tini \
+        libgl1 \
+        libglib2.0-0 \
+        libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64
+ENV PATH=$JAVA_HOME/bin:$PATH
+
+# ---------------------------------------------------------------------
+# 2. Apache Spark 3.3.2 (bundle Hadoop 3)
+# ---------------------------------------------------------------------
+ENV SPARK_VERSION=3.3.2
+ENV HADOOP_PROFILE=3
+ENV SPARK_HOME=/opt/spark
+
+RUN wget -q "https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_PROFILE}.tgz" \
+        -O /tmp/spark.tgz \
+    && tar -xzf /tmp/spark.tgz -C /opt \
+    && mv "/opt/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_PROFILE}" "${SPARK_HOME}" \
+    && rm /tmp/spark.tgz
+
+ENV PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
+# py4j 0.10.9.5 adalah versi bawaan Spark 3.3.2
+ENV PYTHONPATH=$SPARK_HOME/python:$SPARK_HOME/python/lib/py4j-0.10.9.5-src.zip
+ENV PYSPARK_PYTHON=python3
+ENV PYSPARK_DRIVER_PYTHON=python3
+
+# ---------------------------------------------------------------------
+# 3. Driver JDBC PostgreSQL
+# ---------------------------------------------------------------------
+RUN wget -q "https://jdbc.postgresql.org/download/postgresql-42.6.0.jar" \
+        -O "${SPARK_HOME}/jars/postgresql-42.6.0.jar"
+
+# ---------------------------------------------------------------------
+# 4. Pustaka Python (computer vision + ML)
+# ---------------------------------------------------------------------
+COPY docker/requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r /tmp/requirements.txt
+
+# ---------------------------------------------------------------------
+# 5. Direktori kerja & default
+# ---------------------------------------------------------------------
+RUN mkdir -p /app /opt/spark/conf /opt/spark-events
+WORKDIR /app
+
+# Variabel lingkungan default untuk worker (dapat di-override di compose)
+ENV SPARK_MASTER_HOST=spark-master
+ENV SPARK_MASTER_PORT=7077
+ENV SPARK_WORKER_CORES=2
+ENV SPARK_WORKER_MEMORY=2g
+ENV SPARK_NO_DAEMONIZE=true
+
+# tini sebagai init agar sinyal (Ctrl+C / docker stop) ditangani rapi
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["bash"]

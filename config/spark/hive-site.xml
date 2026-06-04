@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<!--
+  hive-site.xml untuk Apache Spark.
+  Berkas ini di-mount ke /opt/spark/conf/hive-site.xml pada container
+  spark-master dan spark-worker sehingga Spark dapat:
+    1. Membaca/menulis tabel Hive melalui Hive Metastore.
+    2. Menyimpan warehouse Hive ke dalam HDFS.
+-->
+<configuration>
+    <property>
+        <name>hive.metastore.uris</name>
+        <value>thrift://hive-metastore:9083</value>
+        <description>Alamat thrift Hive Metastore.</description>
+    </property>
+
+    <property>
+        <name>hive.metastore.warehouse.dir</name>
+        <value>hdfs://namenode:9000/user/hive/warehouse</value>
+        <description>Lokasi warehouse Hive di HDFS.</description>
+    </property>
+
+    <property>
+        <name>hive.metastore.schema.verification</name>
+        <value>false</value>
+    </property>
+
+    <property>
+        <name>datanucleus.schema.autoCreateAll</name>
+        <value>false</value>
+    </property>
+</configuration>
